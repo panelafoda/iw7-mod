@@ -85,6 +85,14 @@ namespace game
 		"cp",
 	};
 
+	const char* G_GAME_MODE_STRINGS_FORMATTED[] =
+	{
+		"Multiplayer", // this is really none, but its for discord presence :P
+		"Singleplayer",
+		"Multiplayer",
+		"Zombies",
+	};
+
 	const char* Com_GameMode_GetActiveGameModeStr()
 	{
 		return G_GAME_MODE_STRINGS[game::Com_GameMode_GetActiveGameMode()];
@@ -213,6 +221,16 @@ namespace game
 			*sv_migrate = migrate;
 			Cbuf_AddCall(0, SV_CmdsMP_CheckLoadGame);
 		}
+	}
+
+	bool SV_ClientIsBot(client_t* client)
+	{
+		return client->remoteAddress.type == NA_BOT;
+	}
+
+	bool SV_ClientIsBot(unsigned int client_num)
+	{
+		return svs_clients[client_num]->remoteAddress.type == NA_BOT;
 	}
 }
 

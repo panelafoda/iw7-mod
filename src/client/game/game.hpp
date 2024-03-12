@@ -54,6 +54,7 @@ namespace game
 	int SV_Cmd_Argc();
 	const char* SV_Cmd_Argv(int index);
 
+	extern const char* G_GAME_MODE_STRINGS_FORMATTED[];
 	const char* Com_GameMode_GetActiveGameModeStr();
 	const char* Com_GameMode_GetGameModeStr(GameModeType gameMode);
 
@@ -64,6 +65,9 @@ namespace game
 	void DB_EnumXAssets(const std::int32_t type, const std::function<void(XAssetHeader)>& callback);
 
 	void SV_CmdsMP_RequestMapRestart(bool loadScripts, bool migrate);
+
+	bool SV_ClientIsBot(client_t* client);
+	bool SV_ClientIsBot(unsigned int client_num);
 }
 
 size_t operator"" _b(const size_t ptr);

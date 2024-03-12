@@ -78,6 +78,11 @@ newoption {
 }
 
 newoption {
+	trigger = "steam-overlay",
+	description = "Enable the Steam Overlay."
+}
+
+newoption {
 	trigger = "inject-host-as-lib",
 	description = "Decide whether to load the game as lib or to inject it"
 }
@@ -246,7 +251,11 @@ warnings "Extra"
 characterset "ASCII"
 
 if _OPTIONS["dev-build"] then
-	defines {"DEV_BUILD"}
+	defines "DEV_BUILD"
+end
+
+if _OPTIONS["steam-overlay"] then
+	defines "LOAD_STEAM_OVERLAY"
 end
 
 if os.getenv("CI") then
@@ -322,12 +331,18 @@ links {"common"}
 
 prebuildcommands {"pushd %{_MAIN_SCRIPT_DIR}", "tools\\premake5 generate-buildinfo", "popd"}
 
-COMPUTER_NAME = os.getenv('COMPUTERNAME')
+local COMPUTER_NAME = os.getenv('COMPUTERNAME')
 if COMPUTER_NAME == "JOEL-PC" then
 	debugdir "D:\\Games\\PC\\IW7"
 	debugcommand "D:\\Games\\PC\\IW7\\$(TargetName)$(TargetExt)"
 	postbuildcommands {
 		"copy /y \"$(OutDir)$(TargetName)$(TargetExt)\" \"D:\\Games\\PC\\IW7\\$(TargetName)$(TargetExt)\"",
+	}
+elseif COMPUTER_NAME == "DESKTOP-P7PCR6I" or COMPUTER_NAME == "mikey" then
+	debugdir "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Call of Duty - Infinite Warfare"
+	debugcommand "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Call of Duty - Infinite Warfare\\$(TargetName)$(TargetExt)"
+	postbuildcommands {
+		"copy /y \"$(OutDir)$(TargetName)$(TargetExt)\" \"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Call of Duty - Infinite Warfare\\$(TargetName)$(TargetExt)\"",
 	}
 end
 

@@ -10,7 +10,9 @@
 #include "command.hpp"
 #include "console/console.hpp"
 #include "network.hpp"
+#include "profile_infos.hpp"
 #include "scheduler.hpp"
+#include "server_list.hpp"
 
 #include <utils/string.hpp>
 #include <utils/info_string.hpp>
@@ -21,12 +23,33 @@ namespace party
 {
 	namespace
 	{
-		struct
+		connection_state server_connection_state{};
+		std::optional<discord_information> server_discord_info{};
+
+		/*
+		struct usermap_file
 		{
-			game::netadr_s host{};
-			std::string challenge{};
-			bool hostDefined{ false };
-		} connect_state;
+			std::string extension;
+			std::string name;
+			bool optional;
+		};
+
+		// snake case these names before release
+		std::vector<usermap_file> usermap_files =
+		{
+			{".ff", "usermap_hash", false},
+			{"_load.ff", "usermap_load_hash", true},
+			{".arena", "usermap_arena_hash", true},
+			{".pak", "usermap_pak_hash", true},
+		};
+
+		std::vector<usermap_file> mod_files =
+		{
+			{".ff", "mod_hash", false},
+			{"_pre_gfx.ff", "mod_pre_gfx_hash", true},
+			{".pak", "mod_pak_hash", true},
+		};
+		*/
 
 		bool preloaded_map = false;
 
@@ -41,8 +64,8 @@ namespace party
 
 		void connect_to_party(const game::netadr_s& target, const std::string& mapname, const std::string& gametype, int sv_maxclients)
 		{
-			if (game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_MP &&
-				game::Com_GameMode_GetActiveGameMode() != game::GAME_MODE_CP)
+			const auto mode = game::Com_GameMode_GetActiveGameMode();
+			if (mode != game::GAME_MODE_MP && mode != game::GAME_MODE_CP)
 			{
 				return;
 			}
@@ -165,6 +188,8 @@ namespace party
 		void sv_start_map_for_party_stub(const char* map, const char* game_type, int client_count, int agent_count, bool hardcore,
 			bool map_is_preloaded, bool migrate)
 		{
+			profile_infos::xuid::clear_xuids();
+
 			preloaded_map = map_is_preloaded;
 			sv_start_map_for_party_hook.invoke<void>(map, game_type, client_count, agent_count, hardcore, map_is_preloaded, migrate);
 		}
@@ -196,7 +221,7 @@ namespace party
 			a.popad64();
 
 			a.jmp(0xC563E2_b);
-		};
+		}
 	}
 
 	void start_map(const std::string& mapname, bool dev)
@@ -280,6 +305,11 @@ namespace party
 		return -1;
 	}
 
+	void reset_server_connection_state()
+	{
+		server_connection_state = {};
+	}
+
 	int get_client_count()
 	{
 		auto count = 0;
@@ -313,24 +343,33 @@ namespace party
 
 	void connect(const game::netadr_s& target)
 	{
-		//command::execute("lui_open_popup popup_acceptinginvite", false);
+		command::execute("luiOpenPopup AcceptingInvite", false);
 
-		connect_state.host = target;
-		connect_state.challenge = utils::cryptography::random::get_challenge();
-		connect_state.hostDefined = true;
+		profile_infos::xuid::clear_xuids();
+		profile_infos::clear_profile_infos();
 
-		network::send(target, "getInfo", connect_state.challenge);
+		server_connection_state.host = target;
+		server_connection_state.challenge = utils::cryptography::random::get_challenge();
+		server_connection_state.hostDefined = true;
+
+		network::send(target, "getInfo", server_connection_state.challenge);
 	}
 
 	void info_response_error(const std::string& error)
 	{
 		console::error("%s\n", error.data());
-		//if (game::Menu_IsMenuOpenAndVisible(0, "popup_acceptinginvite"))
-		//{
-		//	command::execute("lui_close popup_acceptinginvite", false);
-		//}
-
+		command::execute("luiLeaveMenu AcceptingInvite", false);
 		game::Com_SetLocalizedErrorMessage(error.data(), "MENU_NOTICE");
+	}
+
+	connection_state get_server_connection_state()
+	{
+		return server_connection_state;
+	}
+
+	std::optional<discord_information> get_server_discord_info()
+	{
+		return server_discord_info;
 	}
 
 	class component final : public component_interface
@@ -434,6 +473,25 @@ namespace party
 				game::SV_CmdsMP_RequestMapRestart(0, 0);
 			});
 
+			command::add("reconnect", [](const command::params& argument)
+			{
+				if (!server_connection_state.hostDefined)
+				{
+					console::info("Cannot connect to server.\n");
+					return;
+				}
+
+				if (game::CL_IsGameClientActive(0))
+				{
+					command::execute("disconnect");
+					command::execute("reconnect");
+				}
+				else
+				{
+					connect(server_connection_state.host);
+				}
+			});
+
 			command::add("connect", [](const command::params& argument)
 			{
 				if (argument.size() != 2)
@@ -472,6 +530,34 @@ namespace party
 				info.set("playmode", utils::string::va("%i", game::Com_GameMode_GetActiveGameMode()));
 				info.set("sv_running", utils::string::va("%i", get_dvar_bool("sv_running") && !game::Com_FrontEndScene_IsActive()));
 				info.set("dedicated", utils::string::va("%i", get_dvar_bool("dedicated")));
+				info.set("sv_wwwBaseUrl", get_dvar_string("sv_wwwBaseUrl"));
+				info.set("sv_discordImageUrl", get_dvar_string("sv_discordImageUrl"));
+				info.set("sv_discordImageText", get_dvar_string("sv_discordImageText"));
+
+				/*
+				if (!fastfiles::is_stock_map(mapname))
+				{
+					for (const auto& file : usermap_files)
+					{
+						const auto path = get_usermap_file_path(mapname, file.extension);
+						const auto hash = get_file_hash(path);
+						info.set(file.name, hash);
+					}
+				}
+
+				const auto fs_game = get_dvar_string("fs_game");
+				info.set("fs_game", fs_game);
+
+				if (!fs_game.empty())
+				{
+					for (const auto& file : mod_files)
+					{
+						const auto hash = get_file_hash(utils::string::va("%s/mod%s", 
+							fs_game.data(), file.extension.data()));
+						info.set(file.name, hash);
+					}
+				}
+				*/
 
 				network::send(target, "infoResponse", info.build(), '\n');
 			});
@@ -484,44 +570,51 @@ namespace party
 			network::on("infoResponse", [](const game::netadr_s& target, const std::string_view& data)
 			{
 				const utils::info_string info{ data };
-				//server_list::handle_info_response(target, info);
+				server_list::handle_info_response(target, info);
 
-				if (connect_state.host != target)
+				if (server_connection_state.host != target)
 				{
 					return;
 				}
 
-				if (info.get("challenge") != connect_state.challenge)
+				const auto protocol = info.get("protocol");
+				if (std::atoi(protocol.data()) != PROTOCOL)
 				{
-					info_response_error("Invalid challenge.");
+					info_response_error("Connection failed: Invalid protocol.");
+					return;
+				}
+
+				if (info.get("challenge") != server_connection_state.challenge)
+				{
+					info_response_error("Connection failed: Invalid challenge.");
 					return;
 				}
 
 				const auto gamename = info.get("gamename");
 				if (gamename != "IW7"s)
 				{
-					info_response_error("Invalid gamename.");
+					info_response_error("Connection failed: Invalid gamename.");
 					return;
 				}
 
 				const auto playmode = info.get("playmode");
 				if (game::GameModeType(std::atoi(playmode.data())) != game::Com_GameMode_GetActiveGameMode())
 				{
-					info_response_error("Invalid playmode.");
+					info_response_error("Connection failed: Invalid playmode.");
 					return;
 				}
 
 				const auto sv_running = info.get("sv_running");
 				if (!std::atoi(sv_running.data()))
 				{
-					info_response_error("Server not running.");
+					info_response_error("Connection failed: Server not running.");
 					return;
 				}
 
 				const auto mapname = info.get("mapname");
 				if (mapname.empty())
 				{
-					info_response_error("Invalid map.");
+					info_response_error("Connection failed: Invalid map.");
 					return;
 				}
 
@@ -536,12 +629,37 @@ namespace party
 				const auto sv_maxclients = std::atoi(sv_maxclients_str.data());
 				if (!sv_maxclients)
 				{
-					info_response_error("Invalid sv_maxclients.");
+					info_response_error("Connection failed: Invalid sv_maxclients.");
 					return;
 				}
 
-				//party::sv_motd = info.get("sv_motd");
-				//party::sv_maxclients = std::stoi(info.get("sv_maxclients"));
+				server_connection_state.base_url = info.get("sv_wwwBaseUrl");
+				/*
+				if (download_files(target, info, false))
+				{
+					return;
+				}
+				*/
+
+				server_connection_state.motd = info.get("sv_motd");
+				server_connection_state.max_clients = std::stoi(sv_maxclients_str);
+
+				const auto profile_info = profile_infos::get_profile_info();
+				if (!profile_info.has_value())
+				{
+					console::error("profile_info has no value to send, possible undefined behavior ahead\n");
+				}
+
+				const auto profile_info_value = profile_info.value_or(profile_infos::profile_info{});
+				profile_infos::send_profile_info(target, steam::SteamUser()->GetSteamID().bits, profile_info_value);
+
+				discord_information discord_info{};
+				discord_info.image = info.get("sv_discordImageUrl");
+				discord_info.image_text = info.get("sv_discordImageText");
+				if (!discord_info.image.empty() || !discord_info.image_text.empty())
+				{
+					server_discord_info.emplace(discord_info);
+				}
 
 				connect_to_party(target, mapname, gametype, sv_maxclients);
 			});

@@ -10,20 +10,14 @@
 #include "utils/hook.hpp"
 #include <utils/string.hpp>
 
-// Fonts used in game:
-// fonts/blender_pro_bold.ttf, fonts/blender_pro_book.ttf, fonts/blender_pro_heavy.ttf, fonts/blender_pro_medium.ttf
-// fonts/changelingneo-regular.ttf, fonts/dev.ttf, fonts/fira_mono_bold.ttf, fonts/fira_mono_regular.ttf, fonts/iw6_digital.ttf
-
 namespace branding
 {
 	namespace
 	{
 		utils::hook::detour ui_get_formatted_build_number_hook;
-		float color[4] = { 0.666f, 0.666f, 0.666f, 0.666f };
-
 		const char* ui_get_formatted_build_number_stub()
 		{
-			const auto* const build_num = ui_get_formatted_build_number_hook.invoke<const char*>();
+			const auto build_num = ui_get_formatted_build_number_hook.invoke<const char*>();
 			return utils::string::va("%s (%s)", VERSION, build_num);
 		}
 	}
@@ -53,11 +47,12 @@ namespace branding
 			{
 				if (dvars::branding && dvars::branding->current.enabled)
 				{
-					const auto font = game::R_RegisterFont("fonts/fira_mono_bold.ttf", 20);
+					const auto font = game::R_RegisterFont("fonts/fira_mono_bold.ttf", 15);
 					if (font)
 					{
-						game::R_AddCmdDrawText("IW7-Mod: " VERSION, 0x7FFFFFFF, font, 10.f,
-							5.f + static_cast<float>(font->pixelHeight), 1.f, 1.f, 0.0f, color, 0);
+						static float text_color[4] = { 0.860f, 0.459f, 0.925f, 0.400f };
+						game::R_AddCmdDrawText("iw7-mod: " VERSION, 0x7FFFFFFF, font, 10.f,
+							5.f + static_cast<float>(font->pixelHeight), 1.f, 1.f, 0.0f, text_color, 0);
 					}
 				}
 			}, scheduler::pipeline::renderer);
